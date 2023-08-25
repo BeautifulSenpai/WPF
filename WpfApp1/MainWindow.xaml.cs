@@ -13,6 +13,9 @@ using System.Net.NetworkInformation;
 using System.Security.Cryptography;
 using System.Text;
 using System.Threading.Tasks;
+using System.Diagnostics;
+using System.Windows.Input;
+using System.Runtime.InteropServices;
 
 namespace WpfApp1
 {
@@ -26,28 +29,95 @@ namespace WpfApp1
         private TaskbarIcon taskbarIcon;
         private string uid;
 
+
+        private bool isKeyboardLocked = false;
+        private const int WH_KEYBOARD_LL = 13;
+        private const int WM_KEYDOWN = 0x0100;
+        private const int WM_KEYUP = 0x0101;
+
+        private delegate IntPtr LowLevelKeyboardProc(int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr SetWindowsHookEx(int idHook, LowLevelKeyboardProc lpfn, IntPtr hMod, uint dwThreadId);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern bool UnhookWindowsHookEx(IntPtr hhk);
+
+        [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr CallNextHookEx(IntPtr hhk, int nCode, IntPtr wParam, IntPtr lParam);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+        private static extern IntPtr GetModuleHandle(string lpModuleName);
+
+        private LowLevelKeyboardProc _proc;
+        private IntPtr _hookID = IntPtr.Zero;
+
+        private IntPtr HookCallback(int nCode, IntPtr wParam, IntPtr lParam)
+        {
+            if (nCode >= 0)
+            {
+                int vkCode = Marshal.ReadInt32(lParam);
+                if (isKeyboardLocked)
+                {
+                    return (IntPtr)1;
+                }
+            }
+            return CallNextHookEx(_hookID, nCode, wParam, lParam);
+        }
+
+        private void LockKeyboard()
+        {
+            _proc = HookCallback;
+            _hookID = SetHook(_proc);
+            isKeyboardLocked = true;
+        }
+
+        private void UnlockKeyboard()
+        {
+            if (_hookID != IntPtr.Zero)
+            {
+                UnhookWindowsHookEx(_hookID);
+                isKeyboardLocked = false;
+            }
+        }
+
+        private IntPtr SetHook(LowLevelKeyboardProc proc)
+        {
+            using (Process curProcess = Process.GetCurrentProcess())
+            using (ProcessModule curModule = curProcess.MainModule)
+            {
+                return SetWindowsHookEx(WH_KEYBOARD_LL, proc, GetModuleHandle(curModule.ModuleName), 0);
+            }
+        }
+
         public MainWindow()
         {
             InitializeComponent();
             Initialize();
             Closing += Window_Closing;
-
             uid = UIDGenerator.GenerateUID();
-
             uidText.Text = "UID: " + uid;
-
             SaveUidToServerAsync(uid);
+            SetHighPriority();
         }
 
         private void Initialize()
         {
-            
             ShowSplashScreen();
             ConnectToServer(true);
             InitializeSocket();
             questionnaire = new Questionnaire();
             InitializeTaskbarIcon();
             HideToTray();
+        }
+
+        private void SetHighPriority()
+        {
+            Process currentProcess = Process.GetCurrentProcess();
+            if (currentProcess != null)
+            {
+                currentProcess.PriorityClass = ProcessPriorityClass.High;
+            }
         }
 
         private void ShowSplashScreen()
@@ -80,7 +150,7 @@ namespace WpfApp1
             taskbarIcon.Visibility = Visibility.Visible;
         }
 
-        private void ShowQuestion(int index)
+        private async void ShowQuestion(int index)
         {
             if (index < questionnaire.Questions.Count)
             {
@@ -114,10 +184,15 @@ namespace WpfApp1
             else
             {
                 textBlock.Text = $"Тест завершен и уведомление было отправлено";
+
+                HttpClient client = new HttpClient();
+                var response = await client.GetAsync("http://localhost:3000/notify");
+
                 answerStackPanel.Children.Clear();
+
+                LockKeyboard();
             }
         }
-
 
         protected override void OnStateChanged(EventArgs e)
         {
@@ -192,6 +267,16 @@ namespace WpfApp1
                 });
             });
 
+            socket.On("continue-work", (data) =>
+            {
+                HandleAppMinimize();
+            });
+
+            socket.On("finish-work", (data) =>
+            {
+                HandleAppFinish();
+            });
+
             //socket.OnDisconnected += (sender, e) => {
             //    Dispatcher.Invoke(() => {
             //        AuthStatusText("Соединение разорвано");
@@ -200,6 +285,24 @@ namespace WpfApp1
             //};
 
             socket.ConnectAsync();
+        }
+
+        private void HandleAppMinimize()
+        {
+            this.Dispatcher.Invoke(() =>
+            {
+                UnlockKeyboard();
+                this.WindowState = WindowState.Minimized;
+            });
+        }
+
+        private void HandleAppFinish()
+        {
+            this.Dispatcher.Invoke(() =>
+            {
+                UnlockKeyboard();
+                System.Diagnostics.Process.Start("shutdown", "/s /t 0");
+            });
         }
 
         private void AuthStatusText(string text)
@@ -314,13 +417,13 @@ namespace WpfApp1
         {
             using (HttpClient client = new HttpClient())
             {
-                string serverUrl = "http://localhost:3000/saveUid"; // Замените на ваш адрес сервера
+                string serverUrl = "http://localhost:3000/saveUid";
                 var content = new StringContent($"{{ \"uid\": \"{uid}\" }}", Encoding.UTF8, "application/json");
 
                 try
                 {
                     HttpResponseMessage response = await client.PostAsync(serverUrl, content);
-                    response.EnsureSuccessStatusCode(); // Проверка на успешный статус ответа
+                    response.EnsureSuccessStatusCode();
 
                     string responseContent = await response.Content.ReadAsStringAsync();
                     Console.WriteLine("Ответ сервера: " + responseContent);
@@ -348,5 +451,9 @@ namespace WpfApp1
             copiedTextBlock.Visibility = Visibility.Collapsed;
 
         }
+
+
+
+
     }
 }

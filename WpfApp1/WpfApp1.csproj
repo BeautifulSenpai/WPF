@@ -56,10 +56,10 @@
     <ApplicationIcon>icon.ico</ApplicationIcon>
   </PropertyGroup>
   <PropertyGroup>
-    <ManifestCertificateThumbprint>388F322DCDD53F3E798234EB33C7BEDFCC48178C</ManifestCertificateThumbprint>
+    <ManifestCertificateThumbprint>D01817AF318659EB68316FA99DBD640C460A4BD0</ManifestCertificateThumbprint>
   </PropertyGroup>
   <PropertyGroup>
-    <ManifestKeyFile>WpfApp1_1_TemporaryKey.pfx</ManifestKeyFile>
+    <ManifestKeyFile>WpfApp1_TemporaryKey.pfx</ManifestKeyFile>
   </PropertyGroup>
   <PropertyGroup>
     <GenerateManifests>true</GenerateManifests>
@@ -148,6 +148,7 @@
       <DependentUpon>App.xaml</DependentUpon>
       <SubType>Code</SubType>
     </Compile>
+    <Compile Include="Classes\KeyboardLockManager.cs" />
     <Compile Include="Classes\Question.cs" />
     <Compile Include="Classes\Questionnaire.cs" />
     <Compile Include="Classes\UIDGenerator.cs" />
@@ -186,7 +187,7 @@
       <Generator>SettingsSingleFileGenerator</Generator>
       <LastGenOutput>Settings.Designer.cs</LastGenOutput>
     </None>
-    <None Include="WpfApp1_1_TemporaryKey.pfx" />
+    <None Include="WpfApp1_TemporaryKey.pfx" />
   </ItemGroup>
   <ItemGroup>
     <None Include="App.config" />
